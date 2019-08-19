@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>StructViewer</title>
+    <script src="https://cdn.bootcss.com/echarts/4.2.1/echarts.common.min.js"></script>
+    <script src="http://libs.baidu.com/jquery/2.0.0/jquery.min.js"></script>
+</head>
+
+<body>
+    <div id="container">
+        {{ range . }}
+        <div id="{{ . }}" style="width: 100%; height: 25vh;"></div>
+        {{ end }}
+    </div>
+    <script type="text/javascript">
+        var BandWidth = {
+            formatter: function (value) {
+                if ((8 * value / (1024 * 1024 * 1024)) > 1) {
+                    return (8 * value / (1024 * 1024 * 1024)).toFixed(2) + " Gbps";
+                } else if ((8 * value / (1024 * 1024)) > 1) {
+                    return (8 * value / (1024 * 1024)).toFixed(2) + " Mbps";
+                } else if ((8 * value / (1024)) > 1) {
+                    return (8 * value / (1024)).toFixed(2) + " Kbps";
+                } else {
+                    return 8 * value + " bps";
+                }
+            }
+        }
+        var Memory = {
+            formatter: function (value) {
+                if ((value / (1024 * 1024 * 1024)) > 1) {
+                    return (value / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+                } else if ((value / (1024 * 1024)) > 1) {
+                    return (value / (1024 * 1024)).toFixed(2) + " MB";
+                } else if ((value / (1024)) > 1) {
+                    return (value / (1024)).toFixed(2) + " KB";
+                } else {
+                    return value + " Bytes";
+                }
+            }
+        }
+        /////////////////////////////////////////////////////
+        var typeMap = {};
+        var chartMap = {};
+        var datalistMap = {};
+        datalistMap["timestamp"] = [];
+
+        function getTypes() {
+            $.ajax({
+                type: "post",
+                async: true,
+                url: "types",
+                data: {
+                    name: "all"
+                },
+                dataType: "json",
+                timeout: 20000,
+                success: function (result) {
+                    if (result != null) {
+                        for (var key in result) {
+                            typeMap[key] = result[key]
+                        }
+                        initOptions()
+                    }
+                },
+                error: function (errorMsg) {
+                    console.log(errorMsg)
+                }
+            })
+        }
+
+        function initOptions() {
+            var children = document.getElementById('container').childNodes;
+            for (var i = 0; i < children.length; i++) {
+                if (children[i].nodeName == "#text") {
+                    continue;
+                }
+                var id = children[i].id
+                var chart = echarts.init(document.getElementById(id));
+                var option;
+                if (typeMap[id] != 3) {
+                    var axis;
+                    if (typeMap[id] === 1) {
+                        axis = BandWidth;
+                    } else if (typeMap[id] === 2) {
+                        axis = Memory;
+                    } else if (typeMap[id] === 0) {
+                        axis = {};
+                    }
+                    option = {
+                        title: {
+                            text: 'Value of:' + id
+                        },
+                        yAxis: {
+                            type: 'value',
+                            axisLabel: axis,
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: []
+                        },
+                        series: [{
+                            data: [],
+                            type: 'line',
+                            smooth: true
+                        }]
+                    };
+                    datalistMap[id] = [];
+                } else {
+                    option = {
+                        title: {
+                            text: 'Value of:' + id
+                        },
+                        xAxis: {
+                            type: 'value',
+                        },
+                        yAxis: {
+                            type: 'category',
+                            data: []
+                        },
+                        series: [{
+                            data: [],
+                            type: 'bar'
+                        }]
+                    };
+                }
+
+                chart.setOption(option);
+                chartMap[id] = chart;
+            }
+            longPolling()
+            window.setInterval(longPolling, 2000);
+        }
+
+        function longPolling() {
+            $.ajax({
+                type: "post",
+                async: true,
+                url: "data",
+                data: {
+                    name: "all"
+                },
+                dataType: "json",
+                timeout: 20000,
+                success: function (result) {
+                    if (result != null) {
+                        for (var key in result) {
+                            if (typeMap[key] != 3) {
+                                datalistMap[key].push(result[key][0])
+                            } else {
+                                datalistMap[key] = result[key][0]
+                            }
+                        }
+                        for (var key in chartMap) {
+                            if (typeMap[key] != 3) {
+                                var option = {
+                                    xAxis: {
+                                        type: 'category',
+                                        data: datalistMap["timestamp"]
+                                    },
+                                    series: [{
+                                        data: datalistMap[key],
+                                        type: 'line',
+                                        smooth: true
+                                    }]
+                                };
+                                chartMap[key].setOption(option);
+                            } else {
+                                var klist = [];
+                                var vlist = [];
+                                for (var v in datalistMap[key]) {
+                                    klist.push(v)
+                                    vlist.push(datalistMap[key][v])
+                                }
+                                var option = {
+                                    yAxis: {
+                                        type: 'category',
+                                        data: klist
+                                    },
+                                    series: [{
+                                        data: vlist,
+                                        type: 'bar'
+                                    }]
+                                };
+                                chartMap[key].setOption(option);
+                            }
+                        }
+                    }
+                },
+                error: function (errorMsg) {
+                    console.log(errorMsg)
+                }
+            })
+        }
+
+        getTypes()
+    </script>
+</body>
+
+</html>
